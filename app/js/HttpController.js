@@ -21,7 +21,7 @@ const ZipManager = require('./ZipManager')
 const logger = require('logger-sharelatex')
 const HealthChecker = require('./HealthChecker')
 const _ = require('underscore')
-const { pipeline } = require('stream')
+const fs = require('fs')
 
 module.exports = HttpController = {
   flushDoc(req, res, next) {
@@ -208,10 +208,18 @@ module.exports = HttpController = {
   zipProject(req, res, next) {
     const { project_id } = req.params
     logger.log({ project_id }, 'exporting project history as zip file')
-    ZipManager.exportProject(project_id, function (err, outputStream) {
-      pipeline(outputStream, res, err => {
-        if (err) logger.error({ project_id, err }, 'zip pipeline error')
-      })
+    ZipManager.exportProject(project_id, function (err, path) {
+      if (err) {
+        logger.error({ project_id, err }, 'zip preparation error')
+        next(err)
+      } else {
+        // send the file
+        res.download(path, `${project_id}-track-changes.zip`, function (err) {
+          if (err) {
+            logger.error({ project_id, err }, 'zip download error')
+          }
+        })
+      }
     })
   },
 

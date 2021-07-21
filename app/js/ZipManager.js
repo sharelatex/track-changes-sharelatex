@@ -4,7 +4,9 @@ const DiffGenerator = require('./DiffGenerator')
 const DocumentUpdaterManager = require('./DocumentUpdaterManager')
 const PackManager = require('./PackManager')
 const yazl = require('yazl')
-const util = require('util')
+const tempy = require('tempy')
+const fs = require('fs')
+const { pipeline } = require('stream')
 
 async function rewindDoc(projectId, docId, zipfile) {
   logger.log({ projectId, docId }, 'rewinding document')
@@ -87,12 +89,31 @@ async function generateZip(projectId, zipfile) {
   zipfile.end()
 }
 
-async function exportProject(projectId) {
-  var zipfile = new yazl.ZipFile()
-  generateZip(projectId, zipfile) // generate zip file in background
-  return zipfile.outputStream
+function exportProject(projectId, callback) {
+  tempy.file.task(path => {
+    return new Promise(resolve => {
+      const outputStream = fs.createWriteStream(path)
+
+      const zipfile = new yazl.ZipFile()
+
+      pipeline(zipfile.outputStream, outputStream, (err) => {
+        if (err) {
+          callback(err)
+        } else {
+          callback(null, path)
+        }
+
+        resolve() // clean up the temp file
+      })
+
+      generateZip(projectId, zipfile).catch(err => {
+        callback(err)
+        resolve() // clean up the temp file
+      })
+    })
+  }).catch(err => {
+    callback(err)
+  })
 }
 
-module.exports = {
-  exportProject: util.callbackify(exportProject),
-}
+module.exports = { exportProject }
